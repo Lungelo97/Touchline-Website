@@ -5,12 +5,9 @@ export async function onRequestPost(context) {
         const body = await request.json();
         const { customerName, customerEmail, shippingAddress, cartItems } = body;
         
-        // 🚨 CRITICAL DIAGNOSTIC CHECK: Stop errors from masking behind a vague alert
+        // Safety Fallback Check
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Cloudflare cannot read your 'YOCO_SECRET_KEY' variable. Make sure it is saved in your Environment Variables dashboard panel." }), { status: 500 });
-        }
-        if (!env.DB) {
-            return new Response(JSON.stringify({ error: "Cloudflare cannot find your 'DB' D1 Database binding. Make sure it is explicitly added under the Bindings panel tab." }), { status: 500 });
+            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY in Cloudflare Environment Settings Variables." }), { status: 500 });
         }
 
         let totalCents = 0;
@@ -20,35 +17,52 @@ export async function onRequestPost(context) {
 
         const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        // Save order to D1 Database
-        await env.DB.prepare(
-            "INSERT INTO orders (order_id, customer_name, customer_email, shipping_address, total_cents) VALUES (?, ?, ?, ?, ?)"
-        ).bind(orderId, customerName, customerEmail, shippingAddress, totalCents).run();
+        // Optional Database Save Try block so it won't crash checkout if database is unbound
+        try {
+            if (env.DB) {
+                await env.DB.prepare(
+                    "INSERT INTO orders (order_id, customer_name, customer_email, shipping_address, total_cents) VALUES (?, ?, ?, ?, ?)"
+                ).bind(orderId, customerName, customerEmail, shippingAddress, totalCents).run();
+            }
+        } catch (dbError) {
+            console.log("Database tracking skipped:", dbError.message);
+        }
 
-        // Connect securely to Yoco Online Gateways
+        // Clean up key format spacing string explicitly to prevent header structural rejections
+        const cleanSecretKey = env.YOCO_SECRET_KEY.trim();
+
+        // Fire transaction authorization request securely to Yoco Online Gateway Engine
         const yocoResponse = await fetch("https://yoco.com", {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${env.YOCO_SECRET_KEY}`,
+                "Authorization": `Bearer ${cleanSecretKey}`,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 amount: totalCents,
                 currency: "ZAR",
-                successUrl: `https://pages.dev{orderId}`,
-                cancelUrl: "https://pages.dev",
+                successUrl: `https://${request.headers.get("host")}/thank-you.html?orderId=${orderId}`,
+                cancelUrl: `https://${request.headers.get("host")}/`,
                 metadata: { orderId: orderId }
             })
         });
 
-        const yocoData = await yocoResponse.json();
+        // Parse Yoco's server response text cleanly
+        const responseText = await yocoResponse.text();
         
-        if (yocoData.redirectUrl) {
+        let yocoData;
+        try {
+            yocoData = JSON.parse(responseText);
+        } catch (parseError) {
+            return new Response(JSON.stringify({ error: `Yoco rejected request format with HTML screen: ${responseText.substring(0, 150)}` }), { status: 500 });
+        }
+        
+        if (yocoData && yocoData.redirectUrl) {
             return new Response(JSON.stringify({ redirectUrl: yocoData.redirectUrl }), {
                 headers: { "Content-Type": "application/json" }
             });
         } else {
-            return new Response(JSON.stringify({ error: `Yoco Refusal: ${JSON.stringify(yocoData)}` }), { status: 400 });
+            return new Response(JSON.stringify({ error: `Yoco Gateway Refusal: ${yocoData.displayMessage || yocoData.message || JSON.stringify(yocoData)}` }), { status: 400 });
         }
 
     } catch (err) {
