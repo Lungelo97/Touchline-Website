@@ -13,9 +13,10 @@ export async function onRequestPost(context) {
         const { customerName, customerEmail, shippingAddress, cartItems } = body;
         
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY inside Cloudflare variables." }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY in Cloudflare settings variables." }), { status: 500, headers: corsHeaders });
         }
 
+        // Calculate checkout metrics strictly in cents
         let totalCents = 0;
         for (const item of cartItems) {
             totalCents += item.price * item.quantity;
@@ -23,6 +24,7 @@ export async function onRequestPost(context) {
 
         const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
+        // Optional Database Row Insert Try Block
         try {
             if (env.DB) {
                 await env.DB.prepare(
@@ -30,25 +32,28 @@ export async function onRequestPost(context) {
                 ).bind(orderId, customerName, customerEmail, shippingAddress, totalCents).run();
             }
         } catch (dbError) {
-            console.log("Database entry skipped:", dbError.message);
+            console.log("Database transaction bypassed safely.");
         }
 
         const cleanSecretKey = env.YOCO_SECRET_KEY.trim();
 
-        // 🚀 COMBINED SECURITY MATRIX FOR YOCO'S AUTHORIZATION ENGINE
+        // 🚀 YOCO SDK COMPATIBLE PRODUCTION INITIATION ENGINE
         const yocoResponse = await fetch("https://yoco.com", {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${cleanSecretKey}`,
                 "X-Auth-Secret-Key": cleanSecretKey,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 amount: totalCents,
                 currency: "ZAR",
-                successUrl: `https://${request.headers.get("host")}/thank-you.html?orderId=${orderId}`,
                 cancelUrl: `https://${request.headers.get("host")}/`,
-                metadata: { orderId: orderId }
+                successUrl: `https://${request.headers.get("host")}/thank-you.html?orderId=${orderId}`,
+                failureUrl: `https://${request.headers.get("host")}/`,
+                metadata: {
+                    orderId: orderId,
+                    customerName: customerName
+                }
             })
         });
 
@@ -58,16 +63,17 @@ export async function onRequestPost(context) {
         try {
             yocoData = JSON.parse(responseText);
         } catch (parseError) {
-            return new Response(JSON.stringify({ error: `Yoco configuration mismatch. Please delete and re-paste your sk_test_ value into your Cloudflare variables panel settings.` }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `Yoco credentials blocked request format with HTML screen. Re-verify your sk_test_ value configuration inside Cloudflare.` }), { status: 500, headers: corsHeaders });
         }
         
+        // Handle target extraction properties dynamically
         if (yocoData && yocoData.redirectUrl) {
             return new Response(JSON.stringify({ redirectUrl: yocoData.redirectUrl }), {
                 status: 200,
                 headers: corsHeaders
             });
         } else {
-            return new Response(JSON.stringify({ error: `Yoco Core Refusal: ${yocoData.displayMessage || yocoData.message || JSON.stringify(yocoData)}` }), { status: 400, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `Yoco Rejection Gateway Context: ${yocoData.displayMessage || yocoData.message || responseText.substring(0,100)}` }), { status: 400, headers: corsHeaders });
         }
 
     } catch (err) {
