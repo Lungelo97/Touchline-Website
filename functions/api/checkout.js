@@ -5,9 +5,8 @@ export async function onRequestPost(context) {
         const body = await request.json();
         const { customerName, customerEmail, shippingAddress, cartItems } = body;
         
-        // Safety Fallback Check
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY in Cloudflare Environment Settings Variables." }), { status: 500 });
+            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY in Cloudflare settings." }), { status: 500 });
         }
 
         let totalCents = 0;
@@ -17,7 +16,7 @@ export async function onRequestPost(context) {
 
         const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        // Optional Database Save Try block so it won't crash checkout if database is unbound
+        // Optional Database Sync
         try {
             if (env.DB) {
                 await env.DB.prepare(
@@ -25,17 +24,16 @@ export async function onRequestPost(context) {
                 ).bind(orderId, customerName, customerEmail, shippingAddress, totalCents).run();
             }
         } catch (dbError) {
-            console.log("Database tracking skipped:", dbError.message);
+            console.log("Database write bypassed:", dbError.message);
         }
 
-        // Clean up key format spacing string explicitly to prevent header structural rejections
         const cleanSecretKey = env.YOCO_SECRET_KEY.trim();
 
-        // Fire transaction authorization request securely to Yoco Online Gateway Engine
+        // 🚀 UPDATED YOCO OFFICIAL GATEWAY ENDPOINT ENGINE
         const yocoResponse = await fetch("https://yoco.com", {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${cleanSecretKey}`,
+                "X-Auth-Secret-Key": cleanSecretKey,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -47,22 +45,24 @@ export async function onRequestPost(context) {
             })
         });
 
-        // Parse Yoco's server response text cleanly
         const responseText = await yocoResponse.text();
         
         let yocoData;
         try {
             yocoData = JSON.parse(responseText);
         } catch (parseError) {
-            return new Response(JSON.stringify({ error: `Yoco rejected request format with HTML screen: ${responseText.substring(0, 150)}` }), { status: 500 });
+            return new Response(JSON.stringify({ error: `Yoco endpoint structural failure. Server raw reply: ${responseText.substring(0, 120)}` }), { status: 500 });
         }
         
-        if (yocoData && yocoData.redirectUrl) {
-            return new Response(JSON.stringify({ redirectUrl: yocoData.redirectUrl }), {
+        // Handle redirect extraction logic based on Yoco structure variants
+        const redirectUrl = yocoData.redirectUrl || (yocoData.body && yocoData.body.redirectUrl);
+
+        if (redirectUrl) {
+            return new Response(JSON.stringify({ redirectUrl: redirectUrl }), {
                 headers: { "Content-Type": "application/json" }
             });
         } else {
-            return new Response(JSON.stringify({ error: `Yoco Gateway Refusal: ${yocoData.displayMessage || yocoData.message || JSON.stringify(yocoData)}` }), { status: 400 });
+            return new Response(JSON.stringify({ error: `Yoco Rejection Reply: ${yocoData.displayMessage || yocoData.message || responseText.substring(0, 100)}` }), { status: 400 });
         }
 
     } catch (err) {
