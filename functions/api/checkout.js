@@ -13,10 +13,9 @@ export async function onRequestPost(context) {
         const { customerName, customerEmail, shippingAddress, cartItems } = body;
         
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY in Cloudflare settings variables." }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY inside Cloudflare panel settings." }), { status: 500, headers: corsHeaders });
         }
 
-        // Calculate checkout metrics strictly in cents
         let totalCents = 0;
         for (const item of cartItems) {
             totalCents += item.price * item.quantity;
@@ -24,56 +23,47 @@ export async function onRequestPost(context) {
 
         const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        // Optional Database Row Insert Try Block
-        try {
-            if (env.DB) {
-                await env.DB.prepare(
-                    "INSERT INTO orders (order_id, customer_name, customer_email, shipping_address, total_cents) VALUES (?, ?, ?, ?, ?)"
-                ).bind(orderId, customerName, customerEmail, shippingAddress, totalCents).run();
-            }
-        } catch (dbError) {
-            console.log("Database transaction bypassed safely.");
-        }
+        // Sanitize token characters string to explicitly remove hidden whitespaces or carriage returns
+        const cleanSecretKey = env.YOCO_SECRET_KEY.replace(/[\n\r\t\s]/g, "").trim();
 
-        const cleanSecretKey = env.YOCO_SECRET_KEY.trim();
-
-        // 🚀 YOCO SDK COMPATIBLE PRODUCTION INITIATION ENGINE
+        // 🚀 OFFICIAL YOCO DIRECT HOSTED CHECKOUT LINK DISPATCH ENGINE
         const yocoResponse = await fetch("https://yoco.com", {
             method: "POST",
             headers: {
-                "X-Auth-Secret-Key": cleanSecretKey,
+                "Authorization": `Bearer ${cleanSecretKey}`,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 amount: totalCents,
                 currency: "ZAR",
-                cancelUrl: `https://${request.headers.get("host")}/`,
                 successUrl: `https://${request.headers.get("host")}/thank-you.html?orderId=${orderId}`,
-                failureUrl: `https://${request.headers.get("host")}/`,
-                metadata: {
-                    orderId: orderId,
-                    customerName: customerName
-                }
+                cancelUrl: `https://${request.headers.get("host")}/`
             })
         });
 
         const responseText = await yocoResponse.text();
         
+        // If Yoco returns an error web view page, intercept and output it explicitly
+        if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
+            return new Response(JSON.stringify({ 
+                error: `Yoco Firewall Rejection. This means your sk_test_ value saved in Cloudflare is failing authentication. Ensure you did not copy the Public key (pk_test_).` 
+            }), { status: 401, headers: corsHeaders });
+        }
+
         let yocoData;
         try {
             yocoData = JSON.parse(responseText);
         } catch (parseError) {
-            return new Response(JSON.stringify({ error: `Yoco credentials blocked request format with HTML screen. Re-verify your sk_test_ value configuration inside Cloudflare.` }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `Failed parsing reply. Raw details: ${responseText.substring(0, 100)}` }), { status: 500, headers: corsHeaders });
         }
         
-        // Handle target extraction properties dynamically
         if (yocoData && yocoData.redirectUrl) {
             return new Response(JSON.stringify({ redirectUrl: yocoData.redirectUrl }), {
                 status: 200,
                 headers: corsHeaders
             });
         } else {
-            return new Response(JSON.stringify({ error: `Yoco Rejection Gateway Context: ${yocoData.displayMessage || yocoData.message || responseText.substring(0,100)}` }), { status: 400, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `Yoco Gateway Decline: ${yocoData.displayMessage || yocoData.message || responseText.substring(0, 120)}` }), { status: 400, headers: corsHeaders });
         }
 
     } catch (err) {
