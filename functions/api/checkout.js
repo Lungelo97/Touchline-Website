@@ -13,7 +13,7 @@ export async function onRequestPost(context) {
         const { customerName, customerEmail, shippingAddress, cartItems } = body;
         
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY inside Cloudflare panel settings." }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY inside Cloudflare configuration dashboard." }), { status: 500, headers: corsHeaders });
         }
 
         let totalCents = 0;
@@ -23,10 +23,15 @@ export async function onRequestPost(context) {
 
         const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        // Sanitize token characters string to explicitly remove hidden whitespaces or carriage returns
+        // Sanitize token characters string to explicitly remove hidden whitespaces or layout loops
         const cleanSecretKey = env.YOCO_SECRET_KEY.replace(/[\n\r\t\s]/g, "").trim();
 
-        // 🚀 OFFICIAL YOCO DIRECT HOSTED CHECKOUT LINK DISPATCH ENGINE
+        // 🚀 FORCE ABSOLUTE DIAGNOSTIC EVALUATION IF CACHE STAYS STUCK
+        if (!cleanSecretKey.startsWith("sk_test_")) {
+            return new Response(JSON.stringify({ error: `Cloudflare is using an old cached variable key string that starts with: '${cleanSecretKey.substring(0, 8)}'. Please make a brand new commit on GitHub to break the cache.` }), { status: 400, headers: corsHeaders });
+        }
+
+        // 🚀 OFFICIAL SANDBOX CHECKOUT DISPATCH
         const yocoResponse = await fetch("https://yoco.com", {
             method: "POST",
             headers: {
@@ -43,10 +48,9 @@ export async function onRequestPost(context) {
 
         const responseText = await yocoResponse.text();
         
-        // If Yoco returns an error web view page, intercept and output it explicitly
         if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
             return new Response(JSON.stringify({ 
-                error: `Yoco Firewall Rejection. This means your sk_test_ value saved in Cloudflare is failing authentication. Ensure you did not copy the Public key (pk_test_).` 
+                error: `Yoco rejected key formatting layout with an HTML login page. Token snippet being sent: Bearer ${cleanSecretKey.substring(0, 10)}...` 
             }), { status: 401, headers: corsHeaders });
         }
 
@@ -54,7 +58,7 @@ export async function onRequestPost(context) {
         try {
             yocoData = JSON.parse(responseText);
         } catch (parseError) {
-            return new Response(JSON.stringify({ error: `Failed parsing reply. Raw details: ${responseText.substring(0, 100)}` }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `JSON Parse failure. Raw response starts with: ${responseText.substring(0, 60)}` }), { status: 500, headers: corsHeaders });
         }
         
         if (yocoData && yocoData.redirectUrl) {
@@ -63,7 +67,7 @@ export async function onRequestPost(context) {
                 headers: corsHeaders
             });
         } else {
-            return new Response(JSON.stringify({ error: `Yoco Gateway Decline: ${yocoData.displayMessage || yocoData.message || responseText.substring(0, 120)}` }), { status: 400, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `Yoco Refusal: ${yocoData.displayMessage || yocoData.message || responseText.substring(0, 100)}` }), { status: 400, headers: corsHeaders });
         }
 
     } catch (err) {
