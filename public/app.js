@@ -1,4 +1,14 @@
 // Pre-loaded Products (Matching our schema.sql inserts)
+// Hardcoded backup products to display if the database is initializing
+const fallbackProducts = [
+  {
+    id: 'prod-hoodie-01',
+    name: 'Mambisa Golden Boy Hoodie',
+    price: 45000, // R450.00
+    image_url: 'https://unsplash.com'
+  }
+];
+
 const products = [
   { id: 'prod_1', name: 'Touchline Truth Hoodie (Black/Gold)', price_cents: 65000, image_url: 'https://placehold.co/400x400/111/D4AF37?text=Hoodie' },
   { id: 'prod_2', name: 'S.O.O.N 2 Album Vinyl', price_cents: 35000, image_url: 'https://placehold.co/400x400/111/D4AF37?text=Vinyl' },
