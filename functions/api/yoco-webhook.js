@@ -22,14 +22,7 @@ export async function onRequestPost(context) {
         const emailHtml = `
           <div style="font-family: sans-serif; background: #0a0a0a; color: #fff; padding: 40px; border-radius: 8px;">
             <h1 style="color: #D4AF37; font-size: 24px; text-transform: uppercase;">Awe, ${order.customer_name}!</h1>
-            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">
-              Your payment for order <strong style="color: #D4AF37;">${orderId}</strong> was entirely successful.
-            </p>
-            <p style="color: #ccc; font-size: 16px; line-height: 1.6;">
-              The Touchline Truth team is packing your gear securely. You will receive a tracking link once your shipment leaves our facility.
-            </p>
-            <p style="color: #ccc; font-size: 16px; line-height: 1.6; margin-top: 30px;">
-              Stay True.<br/>
-              <strong style="color: #D4AF37;">Touchline Truth Store</strong>
-            </p>
-          </div>
+                     html: `<h1>Awe ${name},</h1><p>Your payment for order <strong>#${orderId}</strong> was successful. We are packing your merch!</p>`
+        })
+    });
+}
