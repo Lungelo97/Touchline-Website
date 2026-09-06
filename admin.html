@@ -260,7 +260,7 @@
       btnElement.disabled = true;
 
       try {
-        const res = await fetch('/api/admin', {
+        const res = await fetch('/functions/api/admin.js', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
