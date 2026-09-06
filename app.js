@@ -111,7 +111,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (submitBtn) submitBtn.innerText = "Processing...";
 
       try {
-        const response = await fetch('/functions/api/checkout.js', {
+        // Using Cloudflare Pages native route structure mapping
+        const response = await fetch('/api/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -127,12 +128,12 @@ document.addEventListener('DOMContentLoaded', () => {
           localStorage.removeItem('touchline_cart'); // Clear basket locally on success
           window.location.href = data.redirectUrl; // Force route shift straight over to secure Yoco portal
         } else {
-          // 🚨 DIAGNOSTIC UPDATE FROM STEP 2 INJECTED HERE
-          alert(`Checkout Failed: ${data.error || "Unknown Server Error Configuration Mapping Layout"}`);
+          alert(`Checkout Failed: ${data.error || "Unknown Response Error Context Structure"}`);
           if (submitBtn) submitBtn.innerText = "Pay securely via Yoco";
         }
       } catch (err) {
-        alert("Server error connecting gateways.");
+        // Upgraded diagnostic catcher reveals hidden server error details directly on screen
+        alert(`Server Error Details: ${err.message}`);
         if (submitBtn) submitBtn.innerText = "Pay securely via Yoco";
       }
     });
@@ -216,4 +217,3 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPageProducts();
   updateCartUI();
 });
- 
