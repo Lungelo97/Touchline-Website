@@ -1,7 +1,6 @@
 export async function onRequestPost(context) {
     const { env, request } = context;
     
-    // Set up standard CORS headers to prevent browser rejection blocks
     const corsHeaders = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -13,12 +12,10 @@ export async function onRequestPost(context) {
         const body = await request.json();
         const { customerName, customerEmail, shippingAddress, cartItems } = body;
         
-        // Safety Fallback Check for Credentials
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY variable inside your Cloudflare Dashboard panel configurations." }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY inside Cloudflare variables." }), { status: 500, headers: corsHeaders });
         }
 
-        // Calculate total price server-side strictly in cents
         let totalCents = 0;
         for (const item of cartItems) {
             totalCents += item.price * item.quantity;
@@ -26,7 +23,6 @@ export async function onRequestPost(context) {
 
         const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
 
-        // Optional Cloudflare D1 SQL Database Tracking entry block
         try {
             if (env.DB) {
                 await env.DB.prepare(
@@ -34,17 +30,17 @@ export async function onRequestPost(context) {
                 ).bind(orderId, customerName, customerEmail, shippingAddress, totalCents).run();
             }
         } catch (dbError) {
-            console.log("Database entry logged and skipped safely:", dbError.message);
+            console.log("Database entry skipped:", dbError.message);
         }
 
-        // Sanitize token characters and remove any stray clipboard whitespaces
         const cleanSecretKey = env.YOCO_SECRET_KEY.trim();
 
-        // 🚀 OFFICIAL COMPATIBLE YOCO CHARGE INITIATION ENGINE
+        // 🚀 COMBINED SECURITY MATRIX FOR YOCO'S AUTHORIZATION ENGINE
         const yocoResponse = await fetch("https://yoco.com", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${cleanSecretKey}`,
+                "X-Auth-Secret-Key": cleanSecretKey,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
@@ -56,17 +52,15 @@ export async function onRequestPost(context) {
             })
         });
 
-        // Capture raw response buffer string cleanly
         const responseText = await yocoResponse.text();
         
         let yocoData;
         try {
             yocoData = JSON.parse(responseText);
         } catch (parseError) {
-            return new Response(JSON.stringify({ error: `Yoco credentials blocked request layout with an HTML gate screen. Verify your sk_test_ key value on Cloudflare.` }), { status: 500, headers: corsHeaders });
+            return new Response(JSON.stringify({ error: `Yoco configuration mismatch. Please delete and re-paste your sk_test_ value into your Cloudflare variables panel settings.` }), { status: 500, headers: corsHeaders });
         }
         
-        // Handle redirect extraction logic variations natively
         if (yocoData && yocoData.redirectUrl) {
             return new Response(JSON.stringify({ redirectUrl: yocoData.redirectUrl }), {
                 status: 200,
@@ -81,7 +75,6 @@ export async function onRequestPost(context) {
     }
 }
 
-// Handle browser pre-flight checks natively
 export async function onRequestOptions() {
     return new Response(null, {
         status: 204,
