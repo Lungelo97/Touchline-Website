@@ -127,7 +127,8 @@ document.addEventListener('DOMContentLoaded', () => {
           localStorage.removeItem('touchline_cart'); // Clear basket locally on success
           window.location.href = data.redirectUrl; // Force route shift straight over to secure Yoco portal
         } else {
-          alert("Checkout initialization failed. Check your API settings keys on Cloudflare configuration dashboards.");
+          // 🚨 DIAGNOSTIC UPDATE FROM STEP 2 INJECTED HERE
+          alert(`Checkout Failed: ${data.error || "Unknown Server Error Configuration Mapping Layout"}`);
           if (submitBtn) submitBtn.innerText = "Pay securely via Yoco";
         }
       } catch (err) {
