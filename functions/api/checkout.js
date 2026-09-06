@@ -1,6 +1,6 @@
 export async function onRequestPost(context) {
     const { env, request } = context;
-    
+
     const corsHeaders = {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -10,68 +10,117 @@ export async function onRequestPost(context) {
 
     try {
         const body = await request.json();
-        const { customerName, customerEmail, shippingAddress, cartItems } = body;
-        
+
+        const {
+            customerName,
+            customerEmail,
+            shippingAddress,
+            cartItems
+        } = body;
+
         if (!env.YOCO_SECRET_KEY) {
-            return new Response(JSON.stringify({ error: "Missing YOCO_SECRET_KEY inside Cloudflare configuration dashboard." }), { status: 500, headers: corsHeaders });
+            return new Response(
+                JSON.stringify({
+                    error: "YOCO_SECRET_KEY is missing from Cloudflare Environment Variables"
+                }),
+                {
+                    status: 500,
+                    headers: corsHeaders
+                }
+            );
         }
 
         let totalCents = 0;
-        for (const item of cartItems) {
-            totalCents += item.price * item.quantity;
+
+        for (const item of cartItems || []) {
+            totalCents += Number(item.price) * Number(item.quantity);
         }
 
-        const orderId = `TL-${Math.floor(100000 + Math.random() * 900000)}`;
+        const orderId =
+            "TL-" + Math.floor(100000 + Math.random() * 900000);
 
-        // Sanitize token characters string to explicitly remove hidden whitespaces or layout loops
-        const cleanSecretKey = env.YOCO_SECRET_KEY.replace(/[\n\r\t\s]/g, "").trim();
+        const secretKey = env.YOCO_SECRET_KEY.trim();
 
-        // 🚀 FORCE ABSOLUTE DIAGNOSTIC EVALUATION IF CACHE STAYS STUCK
-        if (!cleanSecretKey.startsWith("sk_test_")) {
-            return new Response(JSON.stringify({ error: `Cloudflare is using an old cached variable key string that starts with: '${cleanSecretKey.substring(0, 8)}'. Please make a brand new commit on GitHub to break the cache.` }), { status: 400, headers: corsHeaders });
-        }
+        const successUrl =
+            `https://${request.headers.get("host")}/thank-you.html?orderId=${orderId}`;
 
-        // 🚀 OFFICIAL SANDBOX CHECKOUT DISPATCH
-        const yocoResponse = await fetch("https://yoco.com", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${cleanSecretKey}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                amount: totalCents,
-                currency: "ZAR",
-                successUrl: `https://${request.headers.get("host")}/thank-you.html?orderId=${orderId}`,
-                cancelUrl: `https://${request.headers.get("host")}/`
-            })
-        });
+        const cancelUrl =
+            `https://${request.headers.get("host")}/`;
+
+        const payload = {
+            amount: totalCents,
+            currency: "ZAR",
+            successUrl,
+            cancelUrl
+        };
+
+        // IMPORTANT:
+        // Replace endpoint below with the Yoco Checkout API endpoint
+        const yocoResponse = await fetch(
+            "https://payments.yoco.com/api/checkouts",
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${secretKey}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            }
+        );
 
         const responseText = await yocoResponse.text();
-        
-        if (responseText.includes("<!DOCTYPE") || responseText.includes("<html")) {
-            return new Response(JSON.stringify({ 
-                error: `Yoco rejected key formatting layout with an HTML login page. Token snippet being sent: Bearer ${cleanSecretKey.substring(0, 10)}...` 
-            }), { status: 401, headers: corsHeaders });
-        }
 
         let yocoData;
+
         try {
             yocoData = JSON.parse(responseText);
-        } catch (parseError) {
-            return new Response(JSON.stringify({ error: `JSON Parse failure. Raw response starts with: ${responseText.substring(0, 60)}` }), { status: 500, headers: corsHeaders });
-        }
-        
-        if (yocoData && yocoData.redirectUrl) {
-            return new Response(JSON.stringify({ redirectUrl: yocoData.redirectUrl }), {
-                status: 200,
-                headers: corsHeaders
-            });
-        } else {
-            return new Response(JSON.stringify({ error: `Yoco Refusal: ${yocoData.displayMessage || yocoData.message || responseText.substring(0, 100)}` }), { status: 400, headers: corsHeaders });
+        } catch (error) {
+            return new Response(
+                JSON.stringify({
+                    error: "Yoco returned non-JSON response",
+                    raw: responseText.substring(0, 500)
+                }),
+                {
+                    status: 500,
+                    headers: corsHeaders
+                }
+            );
         }
 
-    } catch (err) {
-        return new Response(JSON.stringify({ error: `System Processing Rejection: ${err.message}` }), { status: 500, headers: corsHeaders });
+        if (!yocoResponse.ok) {
+            return new Response(
+                JSON.stringify({
+                    error: yocoData.message || "Yoco API error",
+                    yoco: yocoData
+                }),
+                {
+                    status: yocoResponse.status,
+                    headers: corsHeaders
+                }
+            );
+        }
+
+        return new Response(
+            JSON.stringify(yocoData),
+            {
+                status: 200,
+                headers: corsHeaders
+            }
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        return new Response(
+            JSON.stringify({
+                error: error.message
+            }),
+            {
+                status: 500,
+                headers: corsHeaders
+            }
+        );
     }
 }
 
