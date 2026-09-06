@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (submitBtn) submitBtn.innerText = "Processing...";
 
       try {
-        const response = await fetch('/api/checkout', {
+        const response = await fetch('/functions/api/checkout.js', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
